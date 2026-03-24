@@ -1,0 +1,18 @@
+[project]
+name = "resume-analyzer"
+version = "0.1.0"
+description = "Simple Resume Analyzer for Backend Developer role"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.23",
+    "pymupdf>=1.22",
+    "openai>=1.0",
+    "python-dotenv>=1.0",
+    "python-multipart>=0.0.22",
+]
+
+[project.scripts]
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
