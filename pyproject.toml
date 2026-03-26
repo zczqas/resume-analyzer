@@ -6,12 +6,14 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = [
+    "chromadb>=0.5.3",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.23",
     "pymupdf>=1.22",
     "openai>=1.0",
     "python-dotenv>=1.0",
     "python-multipart>=0.0.22",
+    "sentence-transformers>=3.0.1",
 ]
 
 [project.scripts]

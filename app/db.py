@@ -1,19 +1,21 @@
 import sqlite3
 import json
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 DB_FILE = Path(__file__).resolve().parent.parent / "data" / "analysis.db"
 DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+
 
 def get_connection():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db() -> None:
     with get_connection() as conn:
-        conn.execute(
+        _ = conn.execute(
             """
             CREATE TABLE IF NOT EXISTS analysis (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,14 +26,29 @@ def init_db() -> None:
                 job_match_score REAL,
                 improvement_suggestions TEXT,
                 stack TEXT,
+                job_requirement TEXT,
+                embedding_name TEXT,
+                retrieved_context TEXT,
                 raw_ai_output TEXT
             )
             """
         )
+
+        pragma_rows = cast(
+            list[sqlite3.Row], conn.execute("PRAGMA table_info(analysis)").fetchall()
+        )
+        columns = {str(cast(object, row[1])) for row in pragma_rows}
+        if "job_requirement" not in columns:
+            _ = conn.execute("ALTER TABLE analysis ADD COLUMN job_requirement TEXT")
+        if "embedding_name" not in columns:
+            _ = conn.execute("ALTER TABLE analysis ADD COLUMN embedding_name TEXT")
+        if "retrieved_context" not in columns:
+            _ = conn.execute("ALTER TABLE analysis ADD COLUMN retrieved_context TEXT")
+
         conn.commit()
 
 
-def _to_json_text(value: Any) -> str:
+def _to_json_text(value: object) -> str:
     if value is None:
         return "[]"
     if isinstance(value, (list, dict)):
@@ -41,23 +58,35 @@ def _to_json_text(value: Any) -> str:
     return json.dumps(value)
 
 
-def _from_json_text(value: Any) -> Any:
+def _from_json_text(value: object) -> object:
     if value is None:
         return []
     if not isinstance(value, str):
         return value
     try:
-        return json.loads(value)
+        return cast(object, json.loads(value))
     except Exception:
         return [value] if value else []
 
 
-def save_analysis(filename: str, resume_text: str, payload: dict[str, Any]) -> int:
+def save_analysis(filename: str, resume_text: str, payload: dict[str, object]) -> int:
     with get_connection() as conn:
         cur = conn.execute(
             """
-            INSERT INTO analysis (filename, created_at, resume_text, skill_gaps, job_match_score, improvement_suggestions, stack, raw_ai_output)
-            VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?)
+            INSERT INTO analysis (
+                filename,
+                created_at,
+                resume_text,
+                skill_gaps,
+                job_match_score,
+                improvement_suggestions,
+                stack,
+                job_requirement,
+                embedding_name,
+                retrieved_context,
+                raw_ai_output
+            )
+            VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 filename,
@@ -66,22 +95,30 @@ def save_analysis(filename: str, resume_text: str, payload: dict[str, Any]) -> i
                 payload.get("job_match_score"),
                 _to_json_text(payload.get("improvement_suggestions", [])),
                 _to_json_text(payload.get("stack", [])),
+                str(payload.get("job_requirement", "")),
+                str(payload.get("embedding_name", "job_requirements")),
+                _to_json_text(payload.get("retrieved_context", [])),
                 payload.get("raw_ai_output", ""),
             ),
         )
         conn.commit()
-        return cur.lastrowid
+        if cur.lastrowid is None:
+            raise RuntimeError("Failed to save analysis")
+        return int(cur.lastrowid)
 
 
-def get_all_analyses() -> list[dict[str, Any]]:
+def get_all_analyses() -> list[dict[str, object]]:
     with get_connection() as conn:
         cur = conn.execute("SELECT * FROM analysis ORDER BY created_at DESC")
-        rows = cur.fetchall()
-        results: list[dict[str, Any]] = []
+        rows = cast(list[sqlite3.Row], cur.fetchall())
+        results: list[dict[str, object]] = []
         for row in rows:
-            item = dict(row)
+            item = cast(dict[str, object], dict(row))
             item["skill_gaps"] = _from_json_text(item.get("skill_gaps"))
-            item["improvement_suggestions"] = _from_json_text(item.get("improvement_suggestions"))
+            item["improvement_suggestions"] = _from_json_text(
+                item.get("improvement_suggestions")
+            )
             item["stack"] = _from_json_text(item.get("stack"))
+            item["retrieved_context"] = _from_json_text(item.get("retrieved_context"))
             results.append(item)
         return results
